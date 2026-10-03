@@ -8,7 +8,7 @@ app_license = "mit"
 # Apps
 # ------------------
 
-# required_apps = []
+required_apps = ["erpnext"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -87,6 +87,10 @@ app_license = "mit"
 
 # before_install = "mm_core.install.before_install"
 # after_install = "mm_core.install.after_install"
+
+# Shared Custom Fields: created on install and re-applied on every migrate (see mm_core.custom_fields).
+after_install = ["mm_core.custom_fields.make_custom_fields"]
+before_migrate = ["mm_core.custom_fields.make_custom_fields"]
 
 # Uninstallation
 # ------------
