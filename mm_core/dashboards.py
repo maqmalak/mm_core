@@ -78,6 +78,17 @@ MODULE_FILTERS = {
 
 
 @frappe.whitelist()
+def get_permitted_modules() -> list[str]:
+    """Dashboards the current user can open on this site: read access to the module's main doctype, and
+    micromax installed for the MicroMax-only ones. The SPA loads only these (a CRM-only user sees SO / DO
+    analysis, not GL-based accounts or purchase dashboards)."""
+    has_micromax = "micromax" in frappe.get_installed_apps()
+    return [m for m, (doctype, _fn) in MODULES.items()
+            if (has_micromax or m not in MICROMAX_MODULES)
+            and frappe.db.exists("DocType", doctype) and frappe.has_permission(doctype, "read")]
+
+
+@frappe.whitelist()
 def get_dashboard_filters() -> dict:
     return {k: list(v) for k, v in MODULE_FILTERS.items()}
 

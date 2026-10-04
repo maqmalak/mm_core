@@ -40,7 +40,7 @@ MASTERS = [
     "CRM Product", "CRM Lost Reason", "CRM Communication Status",
 ]
 # Names that must not already exist on the target (would collide with what we bring).
-NO_CONFLICT = PRIMARY + ["CRM Task", "CRM Call Log", "CRM Prospect Scrape"]
+NO_CONFLICT = PRIMARY + ["CRM Task", "CRM Call Log", "CRM Prospect Scrape", "Contract"]
 FORMAT = 1
 
 
@@ -131,6 +131,24 @@ def export_crm(path: str, mailbox: str | None = None) -> dict:
     put("Version", _docs("Version", names=linked("Version", "ref_doctype", "docname")))
     put("ToDo", _docs("ToDo", names=linked("ToDo", "reference_type", "reference_name")))
     put("WhatsApp Message", _docs("WhatsApp Message", names=linked("WhatsApp Message", "reference_doctype", "reference_docname")))
+
+    # Notifications: the CRM's own (mentions, assignments, reminders, mail notices — all of them) and
+    # Frappe's notification log entries about the moved records.
+    put("CRM Notification", _docs("CRM Notification"))
+    put("Notification Log", _docs("Notification Log", names=linked("Notification Log", "document_type", "document_name")))
+
+    # Templates the CRM uses: every Email Template (the CRM's own carry crm_template, but the compose box and
+    # notifications use others too) and every Contract Template; existing names on the target are kept.
+    put("Email Template", _docs("Email Template"))
+    put("Contract Template", _docs("Contract Template"))
+    # Contracts made with a CRM Lead / Deal / Organization (party or linked document). Contracts with ERP
+    # parties (Customer, Supplier, ...) stay behind.
+    crm_contract_types = list(by_type)
+    contracts = set()
+    if frappe.db.exists("DocType", "Contract"):
+        contracts.update(frappe.get_all("Contract", filters={"party_type": ["in", crm_contract_types]}, pluck="name"))
+        contracts.update(frappe.get_all("Contract", filters={"document_type": ["in", crm_contract_types]}, pluck="name"))
+    put("Contract", _docs("Contract", names=contracts))
 
     events = linked("Event", "reference_doctype", "reference_docname")
     for dt, ns in by_type.items():
@@ -248,6 +266,37 @@ def import_crm(path: str, dry_run: int = 0, fallback_user: str | None = None, em
         missing_users.add(u)
         return fallback_user
 
+    # 3a. Attachment files, before the records that point at them. A file whose name is already taken here
+    # by the SAME content is reused; by DIFFERENT content it is copied under a new name and its records
+    # are pointed at that copy (never at the other file).
+    import filecmp
+    import hashlib
+
+    copied, reused, renamed = 0, 0, {}
+    for scope in ("private", "public"):
+        src_dir = os.path.join(path, "files", scope)
+        if not os.path.isdir(src_dir):
+            continue
+        dst_dir = get_files_path(is_private=1 if scope == "private" else 0)
+        prefix = "/private/files/" if scope == "private" else "/files/"
+        for fname in os.listdir(src_dir):
+            src, dst = os.path.join(src_dir, fname), os.path.join(dst_dir, fname)
+            if os.path.exists(dst):
+                if filecmp.cmp(src, dst, shallow=False):
+                    reused += 1
+                    continue
+                stem, ext = os.path.splitext(fname)
+                with open(src, "rb") as fh:
+                    new_name = f"{stem}-{hashlib.sha1(fh.read()).hexdigest()[:8]}{ext}"
+                renamed[prefix + fname] = prefix + new_name
+                dst = os.path.join(dst_dir, new_name)
+                if os.path.exists(dst):
+                    reused += 1
+                    continue
+            if not dry_run:
+                shutil.copy2(src, dst)
+            copied += 1
+
     # 3. Insert, in the export's order (masters, primary, activity).
     inserted, skipped = {}, {}
     for dt, rows in docs.items():
@@ -284,6 +333,9 @@ def import_crm(path: str, dry_run: int = 0, fallback_user: str | None = None, em
                     row["reference_doctype"], row["reference_name"] = None, None
                 row["timeline_links"] = [l for l in row.get("timeline_links") or []
                                          if frappe.db.exists("DocType", l.get("link_doctype"))]
+            if dt == "File" and row.get("file_url") in renamed:
+                row["file_url"] = renamed[row["file_url"]]
+                row["file_name"] = os.path.basename(row["file_url"])
             if dt == "File" and row.get("folder") and not frappe.db.exists("File", row["folder"]):
                 row["folder"] = "Home/Attachments"
             if not dry_run:
@@ -297,19 +349,6 @@ def import_crm(path: str, dry_run: int = 0, fallback_user: str | None = None, em
         if n_skip:
             skipped[dt] = f"{n_skip} already here"
 
-    # 4. Attachment files.
-    copied = 0
-    for scope in ("private", "public"):
-        src_dir = os.path.join(path, "files", scope)
-        if os.path.isdir(src_dir):
-            dst_dir = get_files_path(is_private=1 if scope == "private" else 0)
-            for fname in os.listdir(src_dir):
-                dst = os.path.join(dst_dir, fname)
-                if not os.path.exists(dst):
-                    if not dry_run:
-                        shutil.copy2(os.path.join(src_dir, fname), dst)
-                    copied += 1
-
     # 5. Numbering continues after what was imported.
     if not dry_run:
         _advance_numbering(docs)
@@ -319,6 +358,7 @@ def import_crm(path: str, dry_run: int = 0, fallback_user: str | None = None, em
     report = {
         "site": frappe.local.site, "dry_run": bool(dry_run), "from": data.get("source_site"),
         "inserted": {k: v for k, v in inserted.items() if v}, "skipped": skipped, "files_copied": copied,
+        "files_same_already_here": reused, "files_renamed (name taken by another file)": renamed,
         "users_mapped_to": fallback_user if missing_users else None, "missing_users": sorted(missing_users),
         "email_account": email_account,
         "values_not_kept (field not on this site)": {k: sorted(v) for k, v in lost.items()},
