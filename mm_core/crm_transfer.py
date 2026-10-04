@@ -6,6 +6,8 @@ Two steps, each run against its own site, with a folder in between:
     bench --site wise execute mm_core.crm_transfer.import_crm --kwargs "{'path': '/home/me/crm-export'}"
 
 Export only reads. It writes `crm.json` (every record, children included) and `files/` (attachments).
+With `mailbox`, every email that address sent or received is included too, linked to a CRM record or not;
+standalone calendar entries (Events not tied to another module's document) always are.
 
 Import inserts the records as they are (`db_insert`): original names, creation/modified, owners; no
 validation, hooks, notifications or emails fire. It
@@ -18,6 +20,7 @@ validation, hooks, notifications or emails fire. It
     mail account's address if that is a user, else Administrator) and lists them;
   - points imported emails at the target's default incoming (else outgoing) Email Account;
   - advances numbering (CRM-LEAD-/CRM-DEAL- series, EV. series, CRM Task counter) past what it imported.
+`top_up=1` runs again after a first import and adds only what's new (existing names are skipped).
 The source site is not changed — disable or archive there separately.
 """
 
@@ -55,8 +58,12 @@ def _docs(doctype, filters=None, names=None):
     return out
 
 
-def export_crm(path: str) -> dict:
-    """Read every CRM record and its activity from this site into `path` (created if missing)."""
+def export_crm(path: str, mailbox: str | None = None) -> dict:
+    """Read every CRM record and its activity from this site into `path` (created if missing).
+
+    `mailbox` (e.g. corporate@wise.edu.pk): also every email that address sent or received here, linked
+    to a CRM record or not.
+    """
     os.makedirs(os.path.join(path, "files"), exist_ok=True)
     data = {"format": FORMAT, "source_site": frappe.local.site, "doctypes": {}}
     put = lambda dt, docs: data["doctypes"].setdefault(dt, []).extend(docs)  # noqa: E731
@@ -105,6 +112,12 @@ def export_crm(path: str) -> dict:
         if ns:
             comms.update(frappe.get_all("Communication Link", filters={"link_doctype": dt, "link_name": ["in", ns]},
                                         pluck="parent"))
+    if mailbox:
+        accounts = frappe.get_all("Email Account", filters={"email_id": mailbox}, pluck="name")
+        if accounts:
+            comms.update(frappe.get_all("Communication", filters={"email_account": ["in", accounts]}, pluck="name"))
+        comms.update(frappe.get_all("Communication", filters={"communication_medium": "Email",
+                                                              "sender": ["like", f"%{mailbox}%"]}, pluck="name"))
     put("Communication", _docs("Communication", names=comms))
 
     # Comments, history and assignments on the tasks / notes / call logs too.
@@ -121,6 +134,15 @@ def export_crm(path: str) -> dict:
         if ns:
             events.update(frappe.get_all("Event Participants", filters={"reference_doctype": dt,
                                                                        "reference_docname": ["in", ns]}, pluck="parent"))
+    # Standalone calendar entries (the CRM calendar's meetings / reminders): events not tied to a document
+    # of any other module. Events of other modules (linked to a non-CRM document) stay behind.
+    crm_types = set(by_type)
+    for ev in frappe.get_all("Event", fields=["name", "reference_doctype"]):
+        if ev.reference_doctype and ev.reference_doctype not in crm_types:
+            continue
+        others = frappe.get_all("Event Participants", filters={"parent": ev.name}, pluck="reference_doctype")
+        if all(not t or t in crm_types or t == "Contact" for t in others):
+            events.add(ev.name)
     put("Event", _docs("Event", names=events))
 
     # Attachments on the records and on their emails / notes; the files themselves are copied too.
@@ -165,7 +187,7 @@ def _user_fields(doctype):
 
 
 def import_crm(path: str, dry_run: int = 0, fallback_user: str | None = None, email_account: str | None = None,
-               allow_missing_fields: int = 0) -> dict:
+               allow_missing_fields: int = 0, top_up: int = 0) -> dict:
     """Insert the export in `path` into this site. See the module docstring."""
     with open(os.path.join(path, "crm.json")) as fh:
         data = json.load(fh)
@@ -181,6 +203,11 @@ def import_crm(path: str, dry_run: int = 0, fallback_user: str | None = None, em
             hit = frappe.get_all(dt, filters={"name": ["in", names]}, pluck="name")
             if hit:
                 conflicts[dt] = hit
+    # top_up=1: a second run after the first import (e.g. mail that reached the source site before its
+    # mailbox was switched off) — records already here are skipped, only new ones are added.
+    if conflicts and top_up:
+        print("TOP-UP - already here (skipped):", json.dumps({k: len(v) for k, v in conflicts.items()}))
+        conflicts = {}
     if conflicts:
         print("CONFLICT - these already exist on", frappe.local.site, "- nothing imported:", json.dumps(conflicts, indent=1))
         return {"conflicts": conflicts}
@@ -245,8 +272,15 @@ def import_crm(path: str, dry_run: int = 0, fallback_user: str | None = None, em
             if dt == "ToDo":
                 for f in ("allocated_to", "assigned_by"):
                     row[f] = map_user(row.get(f))
-            if dt == "Communication" and row.get("email_account"):
-                row["email_account"] = email_account or ""
+            if dt == "Communication":
+                if row.get("email_account"):
+                    row["email_account"] = email_account or ""
+                # An email about a document type this site doesn't have (e.g. a MicroMax shipment): keep the
+                # email, drop that link.
+                if row.get("reference_doctype") and not frappe.db.exists("DocType", row["reference_doctype"]):
+                    row["reference_doctype"], row["reference_name"] = None, None
+                row["timeline_links"] = [l for l in row.get("timeline_links") or []
+                                         if frappe.db.exists("DocType", l.get("link_doctype"))]
             if dt == "File" and row.get("folder") and not frappe.db.exists("File", row["folder"]):
                 row["folder"] = "Home/Attachments"
             if not dry_run:

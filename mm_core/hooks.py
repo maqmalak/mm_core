@@ -89,8 +89,10 @@ required_apps = ["erpnext"]
 # after_install = "mm_core.install.after_install"
 
 # Shared Custom Fields: created on install and re-applied on every migrate (see mm_core.custom_fields).
-after_install = ["mm_core.custom_fields.make_custom_fields"]
+after_install = ["mm_core.custom_fields.make_custom_fields", "mm_core.desk_fixes.apply_all"]
 before_migrate = ["mm_core.custom_fields.make_custom_fields"]
+# Desk icons are (re)generated during migrate, so their corrections run after it.
+after_migrate = ["mm_core.desk_fixes.apply_all"]
 
 # Uninstallation
 # ------------
