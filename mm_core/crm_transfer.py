@@ -21,6 +21,8 @@ validation, hooks, notifications or emails fire. It
   - points imported emails at the target's default incoming (else outgoing) Email Account;
   - advances numbering (CRM-LEAD-/CRM-DEAL- series, EV. series, CRM Task counter) past what it imported.
 `top_up=1` runs again after a first import and adds only what's new (existing names are skipped).
+`overwrite="Email Template,Contract Template"` replaces this site's same-named records of those doctypes
+with the source's (templates and lookup lists only — never CRM records).
 The source site is not changed — disable or archive there separately.
 """
 
@@ -208,7 +210,7 @@ def _user_fields(doctype):
 
 
 def import_crm(path: str, dry_run: int = 0, fallback_user: str | None = None, email_account: str | None = None,
-               allow_missing_fields: int = 0, top_up: int = 0) -> dict:
+               allow_missing_fields: int = 0, top_up: int = 0, overwrite: str | list | None = None) -> dict:
     """Insert the export in `path` into this site. See the module docstring."""
     with open(os.path.join(path, "crm.json")) as fh:
         data = json.load(fh)
@@ -298,7 +300,16 @@ def import_crm(path: str, dry_run: int = 0, fallback_user: str | None = None, em
             copied += 1
 
     # 3. Insert, in the export's order (masters, primary, activity).
-    inserted, skipped = {}, {}
+    inserted, skipped, replaced = {}, {}, {}
+    # Doctypes whose same-named records on this site are REPLACED by the source's (e.g. "Email Template",
+    # where ERPNext installs standard templates under the same names). Only lookup/template doctypes —
+    # never the CRM records themselves, whose names are guarded by the conflict check.
+    if isinstance(overwrite, str):
+        overwrite = [d.strip() for d in overwrite.split(",") if d.strip()]
+    overwrite_set = set(overwrite or [])
+    bad = overwrite_set & set(NO_CONFLICT)
+    if bad:
+        frappe.throw(f"overwrite isn't allowed for CRM records: {sorted(bad)}")
     for dt, rows in docs.items():
         if not rows:
             continue
@@ -307,11 +318,14 @@ def import_crm(path: str, dry_run: int = 0, fallback_user: str | None = None, em
             continue
         meta = frappe.get_meta(dt)
         ufields = _user_fields(dt)
-        n_in = n_skip = 0
+        n_in = n_skip = n_replaced = 0
         for row in rows:
+            replace = False
             if frappe.db.exists(dt, row["name"]):
-                n_skip += 1
-                continue
+                if dt not in overwrite_set:
+                    n_skip += 1
+                    continue
+                replace = True  # the source's version replaces this site's same-named record
             row = dict(row)
             for f in ufields:
                 if row.get(f):
@@ -338,6 +352,14 @@ def import_crm(path: str, dry_run: int = 0, fallback_user: str | None = None, em
                 row["file_name"] = os.path.basename(row["file_url"])
             if dt == "File" and row.get("folder") and not frappe.db.exists("File", row["folder"]):
                 row["folder"] = "Home/Attachments"
+            if replace:
+                n_replaced += 1
+            if not dry_run and replace:
+                # Plain row delete (no on_trash / link checks): the same name is inserted again right below,
+                # so whatever links to it keeps pointing at a valid record.
+                for tf in meta.get_table_fields():
+                    frappe.db.delete(tf.options, {"parent": row["name"], "parenttype": dt})
+                frappe.db.delete(dt, {"name": row["name"]})
             if not dry_run:
                 doc = frappe.get_doc(row)
                 doc.flags.ignore_links = True
@@ -345,7 +367,9 @@ def import_crm(path: str, dry_run: int = 0, fallback_user: str | None = None, em
                 for child in doc.get_all_children():
                     child.db_insert()
             n_in += 1
-        inserted[dt] = n_in
+        inserted[dt] = n_in - n_replaced
+        if n_replaced:
+            replaced[dt] = n_replaced
         if n_skip:
             skipped[dt] = f"{n_skip} already here"
 
@@ -357,7 +381,7 @@ def import_crm(path: str, dry_run: int = 0, fallback_user: str | None = None, em
 
     report = {
         "site": frappe.local.site, "dry_run": bool(dry_run), "from": data.get("source_site"),
-        "inserted": {k: v for k, v in inserted.items() if v}, "skipped": skipped, "files_copied": copied,
+        "inserted": {k: v for k, v in inserted.items() if v}, "replaced": replaced, "skipped": skipped, "files_copied": copied,
         "files_same_already_here": reused, "files_renamed (name taken by another file)": renamed,
         "users_mapped_to": fallback_user if missing_users else None, "missing_users": sorted(missing_users),
         "email_account": email_account,

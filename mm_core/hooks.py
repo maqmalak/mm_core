@@ -268,3 +268,24 @@ after_migrate = ["mm_core.desk_fixes.apply_all"]
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+
+# CRM bell notifications for every site (moved from micromax):
+#  - every 5 min: follow-up (CRM Task.due_date) and calendar (Event.starts_on) reminders, and outgoing-mail
+#    sent / failed status — nothing in the crm app reads these, and Email Queue's status change fires no
+#    doc_event, so it has to be polled (see crm_reminders._notify_mail_send_status);
+#  - a new inbound email pings the Lead/Deal owner;
+#  - deleting a task removes its notifications (their Dynamic Link would block the delete).
+scheduler_events = {
+    "cron": {
+        "*/5 * * * *": ["mm_core.crm_reminders.send_due_reminders"],
+    },
+}
+
+doc_events = {
+    "Communication": {
+        "after_insert": "mm_core.crm_mail_notifications.on_communication_after_insert",
+    },
+    "CRM Task": {
+        "on_trash": "mm_core.crm_reminders.cleanup_notifications_on_trash",
+    },
+}
