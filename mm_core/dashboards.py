@@ -2667,9 +2667,10 @@ def _insights(module, k, w):
                         _("Invoices follow deliveries after {0} days on average; {1} are invoiced the same day.").format(flt(v("to_invoice"), 1), _pct(v("same_day_inv"))),
                         f"{flt(v('to_invoice'), 1)} d"))
         wd = w["weekday"]["data"]
-        if wd:
+        wd_total = sum(x["v"] for x in wd)
+        if wd_total:  # the list always has 7 days; with no deliveries every count is 0
             peak = max(wd, key=lambda x: x["v"])
-            out.append(_ins("info", _("Busiest dispatch day"), _("{0} carries {1} of delivery lines.").format(peak["day"], _pct(peak["v"] / sum(x["v"] for x in wd) * 100)), peak["day"]))
+            out.append(_ins("info", _("Busiest dispatch day"), _("{0} carries {1} of delivery lines.").format(peak["day"], _pct(peak["v"] / wd_total * 100)), peak["day"]))
         if v("against_so") < 98:
             out.append(_ins("warning", _("Deliveries without an order"), _("{0} of delivery lines are not linked to a sales order.").format(_pct(100 - v("against_so"))),
                             _pct(100 - v("against_so"))))
