@@ -40,7 +40,7 @@ MASTERS = [
     "CRM Product", "CRM Lost Reason", "CRM Communication Status",
 ]
 # Names that must not already exist on the target (would collide with what we bring).
-NO_CONFLICT = PRIMARY + ["CRM Task", "CRM Call Log"]
+NO_CONFLICT = PRIMARY + ["CRM Task", "CRM Call Log", "CRM Prospect Scrape"]
 FORMAT = 1
 
 
@@ -87,6 +87,9 @@ def export_crm(path: str, mailbox: str | None = None) -> dict:
     # The CRM's own task / note / call tables move whole — including entries not tied to a lead or deal.
     tasks, notes, calls = _docs("CRM Task"), _docs("FCRM Note"), _docs("CRM Call Log")
     put("CRM Task", tasks)
+    # Prospect Scraper review queue (mm_core doctype since the move from micromax); converted rows link
+    # their CRM Lead by name, which the import keeps.
+    put("CRM Prospect Scrape", _docs("CRM Prospect Scrape"))
     put("FCRM Note", notes)
     put("CRM Call Log", calls)
     notes = {d["name"] for d in notes}

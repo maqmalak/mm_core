@@ -1,0 +1,288 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:SCRAPE-{#####}",
+ "creation": "2026-09-09 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_source",
+  "source_url",
+  "status",
+  "column_break_source",
+  "research_source",
+  "last_research_date",
+  "section_break_identity",
+  "donor_name",
+  "donor_type",
+  "segment",
+  "column_break_identity",
+  "website",
+  "donor_profile_url",
+  "section_break_location",
+  "country",
+  "city",
+  "column_break_location",
+  "address",
+  "section_break_fundraising",
+  "csr_department",
+  "focus_area",
+  "column_break_fundraising",
+  "proposed_ask",
+  "section_break_contact",
+  "focal_person",
+  "designation",
+  "column_break_contact",
+  "email",
+  "phone",
+  "contact_source",
+  "social_media",
+  "section_break_review",
+  "raw_extract",
+  "column_break_review",
+  "scrape_error",
+  "converted_lead"
+ ],
+ "istable": 0,
+ "is_submittable": 0,
+ "links": [],
+ "modified": "2026-10-05 02:19:59.539095",
+ "modified_by": "Administrator",
+ "module": "MM Core",
+ "name": "CRM Prospect Scrape",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 0,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "title_field": "donor_name",
+ "fields": [
+  {
+   "fieldname": "section_break_source",
+   "fieldtype": "Section Break",
+   "label": "Source"
+  },
+  {
+   "fieldname": "source_url",
+   "fieldtype": "Data",
+   "label": "Source URL",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending Review\nApproved\nRejected\nConverted",
+   "default": "Pending Review",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_source",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "research_source",
+   "fieldtype": "Data",
+   "label": "Research Source"
+  },
+  {
+   "fieldname": "last_research_date",
+   "fieldtype": "Date",
+   "label": "Last Research Date"
+  },
+  {
+   "fieldname": "section_break_identity",
+   "fieldtype": "Section Break",
+   "label": "Identity"
+  },
+  {
+   "fieldname": "donor_name",
+   "fieldtype": "Data",
+   "label": "Donor Name",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "donor_type",
+   "fieldtype": "Select",
+   "label": "Donor Type",
+   "options": "\nCorporate\nFoundation\nNGO\nGovernment\nTrust\nIndividual\nInternational Agency\nOther"
+  },
+  {
+   "fieldname": "segment",
+   "fieldtype": "Data",
+   "label": "Segment"
+  },
+  {
+   "fieldname": "column_break_identity",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "website",
+   "fieldtype": "Data",
+   "label": "Website"
+  },
+  {
+   "fieldname": "donor_profile_url",
+   "fieldtype": "Data",
+   "label": "Donor Profile URL"
+  },
+  {
+   "fieldname": "section_break_location",
+   "fieldtype": "Section Break",
+   "label": "Location"
+  },
+  {
+   "fieldname": "country",
+   "fieldtype": "Data",
+   "label": "Country"
+  },
+  {
+   "fieldname": "city",
+   "fieldtype": "Data",
+   "label": "City"
+  },
+  {
+   "fieldname": "column_break_location",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "address",
+   "fieldtype": "Small Text",
+   "label": "Address"
+  },
+  {
+   "fieldname": "section_break_fundraising",
+   "fieldtype": "Section Break",
+   "label": "Fundraising"
+  },
+  {
+   "fieldname": "csr_department",
+   "fieldtype": "Data",
+   "label": "CSR/ESG Department"
+  },
+  {
+   "fieldname": "focus_area",
+   "fieldtype": "Data",
+   "label": "Focus Area"
+  },
+  {
+   "fieldname": "column_break_fundraising",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "proposed_ask",
+   "fieldtype": "Small Text",
+   "label": "Proposed Ask"
+  },
+  {
+   "fieldname": "section_break_contact",
+   "fieldtype": "Section Break",
+   "label": "Contact"
+  },
+  {
+   "fieldname": "focal_person",
+   "fieldtype": "Data",
+   "label": "Focal Person"
+  },
+  {
+   "fieldname": "designation",
+   "fieldtype": "Data",
+   "label": "Designation"
+  },
+  {
+   "fieldname": "column_break_contact",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "Email"
+  },
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "Phone"
+  },
+  {
+   "fieldname": "contact_source",
+   "fieldtype": "Data",
+   "label": "Contact Source"
+  },
+  {
+   "fieldname": "social_media",
+   "fieldtype": "Small Text",
+   "label": "Social Media"
+  },
+  {
+   "fieldname": "section_break_review",
+   "fieldtype": "Section Break",
+   "label": "Review"
+  },
+  {
+   "fieldname": "raw_extract",
+   "fieldtype": "Small Text",
+   "label": "Raw Extract",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_review",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "scrape_error",
+   "fieldtype": "Data",
+   "label": "Scrape Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "converted_lead",
+   "fieldtype": "Link",
+   "label": "Converted Lead",
+   "options": "CRM Lead",
+   "read_only": 1
+  }
+ ]
+}

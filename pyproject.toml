@@ -8,6 +8,9 @@ requires-python = ">=3.14"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
+    # Prospect Scraper (mm_core.crm_scraper)
+    "beautifulsoup4",
+    "lxml",
     # "frappe~=16.0.0" # Installed and managed by bench.
 ]
 
