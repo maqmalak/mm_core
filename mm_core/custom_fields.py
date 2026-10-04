@@ -45,6 +45,16 @@ def _build_custom_fields():
     add("Purchase Invoice", "purchase_location", "Purchase Location", "Select", "Local\nHead Office", "tax_withholding_category", reqd=1)
     add("Purchase Order Item", "remarks", "Remarks", "Data", None, "product_bundle")
 
+    # ---------------------------------------------------------- Email Template: CRM scope
+    # Email Template is desk-wide (HR/Payroll notifications share it); the React CRM's Email Templates page and
+    # the Lead/Deal compose picker list only templates with this flag set.
+    add("Email Template", "crm_template", "CRM Template", "Check", None, "subject", default="0",
+        description="Shown in the CRM's Email Templates list and the Lead/Deal compose box template picker.")
+
+    # ---------------------------------------------------------- CRM Task: Tasks vs Follow-ups
+    add("CRM Task", "task_category", "Category", "Select", "\nTask\nFollow-up", "title",
+        description="Distinguishes the generic Tasks list from the Lead/Deal Follow-ups mechanism (same doctype, different UI lists).")
+
     # ---------------------------------------------------------- Payment Entry sign-off
     add("Payment Entry", "prepared_by", "Prepared By", "Data", None, "remarks")
     add("Payment Entry", "checked_by", "Checked By", "Data", None, "prepared_by")
