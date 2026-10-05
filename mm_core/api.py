@@ -79,3 +79,32 @@ def get_available_reports(names: str | list) -> list[str]:
         except Exception:
             continue
     return out
+
+
+@frappe.whitelist()
+def get_print_options(doctype: str) -> dict:
+    """Print formats and letter heads for the React "Print" dialog — the same list the desk's print view offers.
+
+    Print Format isn't readable by ordinary desk users, so the desk reads it from the doctype's meta; this does
+    the same behind a print-permission check.
+    """
+    if not frappe.has_permission(doctype, "print"):
+        frappe.throw(frappe._("Not permitted to print {0}").format(doctype), frappe.PermissionError)
+    meta = frappe.get_meta(doctype)
+    formats = frappe.get_all(
+        "Print Format",
+        filters={"doc_type": doctype, "disabled": 0},
+        fields=["name", "standard", "print_format_type"],
+        order_by="standard asc, name asc",  # custom (designed) formats first
+    )
+    names = [f.name for f in formats]
+    if "Standard" not in names:
+        names.append("Standard")  # Frappe's built-in layout
+    letter_heads = frappe.get_all("Letter Head", filters={"disabled": 0}, fields=["name", "is_default"], order_by="is_default desc, name asc")
+    return {
+        "formats": names,
+        "custom": [f.name for f in formats if f.standard == "No"],
+        "default_format": meta.default_print_format or (names[0] if names else "Standard"),
+        "letter_heads": [l.name for l in letter_heads],
+        "default_letter_head": next((l.name for l in letter_heads if l.is_default), None),
+    }
