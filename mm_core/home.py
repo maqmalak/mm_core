@@ -122,25 +122,16 @@ def _kpis(company):
     return out
 
 
-def _approvals(limit=30):
-    user, items = frappe.session.user, []
-    if frappe.db.exists("DocType", "Workflow Action"):
-        for wa in frappe.get_all("Workflow Action", filters={"status": "Open", "user": user},
-                                 fields=["reference_doctype", "reference_name", "workflow_state", "creation"],
-                                 order_by="creation desc", limit=limit):
-            if not frappe.db.exists(wa.reference_doctype, wa.reference_name):
-                continue
-            amt_field = (ACTIVITY.get(wa.reference_doctype) or (None, None, None))[1]
-            amount = frappe.db.get_value(wa.reference_doctype, wa.reference_name, amt_field) if amt_field else None
-            items.append({"doctype": wa.reference_doctype, "name": wa.reference_name, "state": wa.workflow_state,
-                          "amount": flt(amount) or None, "since": str(wa.creation), "can_approve": True})
-    if _can("Leave Application"):
-        for la in frappe.get_all("Leave Application", filters={"status": "Open", "docstatus": 0, "leave_approver": user},
-                                 fields=["name", "employee_name", "leave_type", "total_leave_days", "creation"], limit=limit):
-            items.append({"doctype": "Leave Application", "name": la.name, "state": "Open",
-                          "title": f"{la.employee_name} · {la.leave_type} · {flt(la.total_leave_days):g} days",
-                          "since": str(la.creation), "can_approve": False})
-    return items[:limit]
+def _approvals(limit=30, company=None):
+    """What waits for the current user (workflow documents + HR requests), from the approvals inbox."""
+    from mm_core.approvals import get_inbox
+
+    items = []
+    for p in get_inbox(company, days=1)["pending"][:limit]:
+        items.append({"doctype": p["doctype"], "name": p["name"], "state": p["state"], "title": p.get("title") or "",
+                      "amount": p.get("amount"), "since": p["since"], "category": p["category"],
+                      "can_approve": "Approve" in (p.get("actions") or [])})
+    return items
 
 
 def _alerts(company, approvals_count):
@@ -198,8 +189,8 @@ def _alerts(company, approvals_count):
     if _can("Bank Transaction"):
         n = frappe.db.sql("""select count(*) from `tabBank Transaction` where docstatus=1 and company=%s
             and status in ('Unreconciled','Pending') and unallocated_amount > 0""", (company,))[0][0]
-        add("bank", n, "Bank lines unreconciled", "Bank transactions to match", "/app/bank-transaction?status=Unreconciled", "sky")
-    add("approvals", approvals_count, "Approvals waiting", "Documents waiting for you", "/approvals", "yellow")
+        add("bank", n, "Bank lines unreconciled", "Bank transactions to match", "/desk/bank-transaction?status=Unreconciled", "sky")
+    add("approvals", approvals_count, "Approvals waiting", "Workflow and HR requests waiting for you", "/approvals/inbox", "yellow")
     if _can("CRM Task"):
         n = frappe.db.sql("""select count(*) from `tabCRM Task` where status in ('Backlog','Todo','In Progress')
             and assigned_to = %s and due_date < %s""", (user, now_datetime()))[0][0]
@@ -326,7 +317,7 @@ def get_home(company: str | None = None, refresh: int = 0) -> dict:
 
 
 def _compute(company):
-    approvals = _block(_approvals) or []
+    approvals = _block(_approvals, 30, company) or []
     activity = _block(_activity, company) or ([], [0] * 24, {}, 0.0)
     feed, hours, mix, posted = activity
     days = _block(_week_days, company) or []
@@ -350,6 +341,10 @@ def approve(doctype: str, name: str) -> dict:
     """Apply the workflow transition whose action starts with "Approve" that the current user may take."""
     from frappe.model.workflow import apply_workflow, get_transitions
 
+    if not frappe.db.exists("Workflow", {"document_type": doctype, "is_active": 1}):
+        from mm_core.approvals import act
+
+        return act(doctype, name, "Approve")              # HR requests without a workflow (expense claims…)
     doc = frappe.get_doc(doctype, name)
     actions = [t.action for t in get_transitions(doc) if (t.action or "").lower().startswith("approv")]
     if not actions:
