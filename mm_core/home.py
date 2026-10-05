@@ -245,9 +245,9 @@ def _activity(company, days=7, per_doctype=12):
 
 
 def _week_days(company):
-    """Documents created per day, Monday–Sunday of the current week (same doctypes as the activity feed)."""
+    """Documents created per day over the last 7 days, today included (same doctypes as the activity feed)."""
     today = getdate(nowdate())
-    start = add_days(today, -today.weekday())
+    start = add_days(today, -6)
     counts = {}
     for dt in ACTIVITY:
         if not _can(dt):
