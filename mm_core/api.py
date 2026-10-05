@@ -60,3 +60,22 @@ def get_linked_parent_docs(
         limit_page_length=200,
     )
     return list(dict.fromkeys(r.parent for r in parent_names if r.parent))
+
+
+@frappe.whitelist()
+def get_available_reports(names: str | list) -> list[str]:
+    """Of the given Report names, those that exist on this site, aren't disabled and the current user may run
+    (Report.is_permitted: the report's roles, or read access to its reference doctype). The React reports
+    hub shows a card only for these, so a site without HRMS / a user without Accounts sees no dead cards."""
+    if isinstance(names, str):
+        names = frappe.parse_json(names)
+    out = []
+    for name in names or []:
+        if not frappe.db.exists("Report", {"name": name, "disabled": 0}):
+            continue
+        try:
+            if frappe.get_cached_doc("Report", name).is_permitted():
+                out.append(name)
+        except Exception:
+            continue
+    return out
