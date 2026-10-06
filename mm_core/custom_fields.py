@@ -162,6 +162,45 @@ def _build_custom_fields():
     add("CRM Lead", "second_contact_email", "Email", "Data", "Email", "second_contact_column_break", None)
     add("CRM Lead", "second_contact_mobile", "Cell No", "Data", "Phone", "second_contact_email", None)
 
+    # ---------------------------------------------------------- Salary loans (mm_core.loans)
+    # Loan = an Employee Advance repaid in monthly instalments from salary. The policy lives in HR Settings;
+    # the eligibility check (service, salary limits, guarantor, history) runs before submit.
+    add("Employee Advance", "mm_loan_section", "Salary Loan", "Section Break", None, "repay_unclaimed_amount_from_salary")
+    add("Employee Advance", "mm_is_loan", "Salary loan (repay in instalments from salary)", "Check", None, "mm_loan_section", default="0")
+    add("Employee Advance", "mm_installment_months", "Instalments (months)", "Int", None, "mm_is_loan", depends_on="mm_is_loan")
+    add("Employee Advance", "mm_monthly_installment", "Monthly Instalment", "Currency", "currency", "mm_installment_months",
+        depends_on="mm_is_loan", read_only=1)
+    add("Employee Advance", "mm_first_deduction", "First Deduction Month", "Date", None, "mm_monthly_installment",
+        depends_on="mm_is_loan", description="Payroll month the first instalment is deducted in (default: next month).")
+    add("Employee Advance", "mm_loan_column", None, "Column Break", None, "mm_first_deduction")
+    add("Employee Advance", "mm_guarantor", "Guarantor", "Link", "Employee", "mm_loan_column", depends_on="mm_is_loan")
+    add("Employee Advance", "mm_guarantor_name", "Guarantor Name", "Data", None, "mm_guarantor", depends_on="mm_is_loan",
+        fetch_from="mm_guarantor.employee_name", read_only=1)
+    add("Employee Advance", "mm_eligibility", "Eligibility Check", "Small Text", None, "mm_guarantor_name", depends_on="mm_is_loan",
+        read_only=1, no_copy=1)
+    add("Employee Advance", "mm_override_reason", "Override Reason", "Small Text", None, "mm_eligibility", depends_on="mm_is_loan",
+        no_copy=1, description="HR Manager only: why a loan that fails the policy is approved anyway.")
+
+    add("HR Settings", "mm_loan_tab", "Salary Loans", "Tab Break", None, "hiring_sender_email")
+    add("HR Settings", "mm_loan_policy_section", "Salary Loan Policy", "Section Break", None, "mm_loan_tab")
+    add("HR Settings", "mm_loan_employment_types", "Eligible Employment Types", "Small Text", None, "mm_loan_policy_section",
+        default="Full-time", description="One per line.")
+    add("HR Settings", "mm_loan_min_service_months", "Minimum Service (months)", "Int", None, "mm_loan_employment_types", default="12")
+    add("HR Settings", "mm_loan_salary_multiple", "Maximum Loan (× average gross salary)", "Float", None, "mm_loan_min_service_months", default="3")
+    add("HR Settings", "mm_loan_max_installment_pct", "Maximum Instalment (% of average net pay)", "Percent", None,
+        "mm_loan_salary_multiple", default="30")
+    add("HR Settings", "mm_loan_max_months", "Maximum Tenure (months)", "Int", None, "mm_loan_max_installment_pct", default="12")
+    add("HR Settings", "mm_loan_max_active", "Other Loans Allowed While One Is Outstanding", "Int", None, "mm_loan_max_months", default="0")
+    add("HR Settings", "mm_loan_policy_column", None, "Column Break", None, "mm_loan_max_active")
+    add("HR Settings", "mm_loan_guarantor_required", "Guarantor Required", "Select", "Always\nAbove one month's gross salary\nNever",
+        "mm_loan_policy_column", default="Always")
+    add("HR Settings", "mm_loan_guarantor_min_service_months", "Guarantor Minimum Service (months)", "Int", None,
+        "mm_loan_guarantor_required", default="24")
+    add("HR Settings", "mm_loan_guarantor_max_guarantees", "Loans One Guarantor May Back", "Int", None,
+        "mm_loan_guarantor_min_service_months", default="2")
+    add("HR Settings", "mm_loan_component", "Recovery Salary Component", "Link", "Salary Component", "mm_loan_guarantor_max_guarantees",
+        description="Deduction used for instalments (default: Loan Recovery, created automatically).")
+
     return data
 
 

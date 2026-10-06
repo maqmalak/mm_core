@@ -89,10 +89,10 @@ required_apps = ["erpnext"]
 # after_install = "mm_core.install.after_install"
 
 # Shared Custom Fields: created on install and re-applied on every migrate (see mm_core.custom_fields).
-after_install = ["mm_core.custom_fields.make_custom_fields", "mm_core.desk_fixes.apply_all"]
+after_install = ["mm_core.custom_fields.make_custom_fields", "mm_core.desk_fixes.apply_all", "mm_core.loans.ensure_policy_defaults"]
 before_migrate = ["mm_core.custom_fields.make_custom_fields"]
 # Desk icons are (re)generated during migrate, so their corrections run after it.
-after_migrate = ["mm_core.desk_fixes.apply_all"]
+after_migrate = ["mm_core.desk_fixes.apply_all", "mm_core.loans.ensure_policy_defaults"]
 
 # Uninstallation
 # ------------
@@ -287,5 +287,13 @@ doc_events = {
     },
     "CRM Task": {
         "on_trash": "mm_core.crm_reminders.cleanup_notifications_on_trash",
+    },
+    # Salary loans (mm_core.loans): eligibility on save, policy enforced on submit, instalments when paid out.
+    "Employee Advance": {
+        "validate": "mm_core.loans.validate",
+        "before_submit": "mm_core.loans.before_submit",
+    },
+    "Payment Entry": {
+        "on_submit": "mm_core.loans.on_payment_submit",
     },
 }
