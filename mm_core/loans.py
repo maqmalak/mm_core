@@ -13,6 +13,28 @@ The policy (HR Settings → Salary Loans tab) decides who may borrow and how muc
 
 check_eligibility() returns every check with its result; validate() / before_submit() (doc_events) store the
 result on the loan and block submission when it fails, unless an HR Manager gives an override reason.
+
+
+The HR Settings → Salary Loans tab now has the default policy filled in, on both local sites (micromaxerp and wise). I checked the stored values in the database; I haven't opened the tab in the browser.
+
+Field	Value
+Eligible Employment Types =	Full-time
+Minimum Service (months) =	12
+Maximum Loan (x average gross salary) =	3
+Maximum Instalment (% of average net pay) =	30
+Maximum Tenure (months) =	12
+Other Loans Allowed While One Is Outstanding =	0
+Guarantor Required =	Always
+Guarantor Minimum Service (months) =	24
+Loans One Guarantor May Back =	2
+Recovery Salary Component =	Loan Recovery (a Deduction component, created if missing)
+How it behaves:
+
+Only empty fields are filled. A value you change, including a deliberate 0, is never overwritten.
+It runs automatically after every migrate and on a new install. When you deploy, production (demo) and the school site get the same defaults without a manual step.
+The settings form shows exactly what the eligibility check enforces, and editing a value changes the rule straight away.
+Changes are in loans.py (new ensure_policy_defaults) and hooks.py. Backend only, in mm_core; it applies on the next full deploy:
+
 """
 
 import frappe

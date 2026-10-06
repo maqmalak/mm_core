@@ -15,7 +15,7 @@ from frappe import _
 from frappe.utils import add_days, flt, nowdate
 
 HR_ROLES = {"HR Manager", "HR User"}
-HR_DOCTYPES = ("Leave Application", "Expense Claim", "Shift Request", "Attendance Request", "Compensatory Leave Request")
+HR_DOCTYPES = ("Leave Application", "Expense Claim", "Shift Request", "Attendance Request", "Compensatory Leave Request", "Employee Advance")
 PER_DOCTYPE = 100
 
 
@@ -29,6 +29,9 @@ def _title(dt, d):
         return f"{d.get('employee_name')} · {d.get('leave_type')} · {days} from {d.get('from_date')}"
     if dt == "Expense Claim":
         return f"{d.get('employee_name')} · Expense claim"
+    if dt == "Employee Advance":
+        months = d.get("mm_installment_months")
+        return f"{d.get('employee_name')} · salary loan{f' · {months} instalments' if months else ''}"
     if dt == "Shift Request":
         return f"{d.get('employee_name')} · {d.get('shift_type')} from {d.get('from_date')}"
     for f in ("title", "employee_name", "customer_name", "supplier_name", "party_name"):
@@ -38,7 +41,7 @@ def _title(dt, d):
 
 
 def _amount(dt, d):
-    for f in ("total_claimed_amount", "base_grand_total", "grand_total", "total_amount", "paid_amount"):
+    for f in ("total_claimed_amount", "advance_amount", "base_grand_total", "grand_total", "total_amount", "paid_amount"):
         if d.get(f):
             return flt(d.get(f))
     return None
@@ -51,7 +54,7 @@ def _fields(dt, wanted):
 
 COMMON = ["title", "employee_name", "customer_name", "supplier_name", "party_name", "base_grand_total", "grand_total",
           "total_amount", "total_claimed_amount", "leave_type", "total_leave_days", "from_date", "to_date", "shift_type",
-          "company", "status", "approval_status"]
+          "company", "status", "approval_status", "advance_amount", "mm_installment_months"]
 
 
 def _workflow_pending(user, roles, company, out, seen):
@@ -110,6 +113,10 @@ def _hr_pending(user, roles, company, out, seen):
     add("Leave Application", {"status": "Open", "docstatus": 0}, "leave_approver", lambda d: "Open")
     add("Expense Claim", {"approval_status": "Draft", "docstatus": 0}, "expense_approver", lambda d: "Pending approval")
     add("Shift Request", {"status": "Draft", "docstatus": 0}, "approver", lambda d: "Pending approval")
+    # Salary loan requests (mm_core.loans): drafts waiting for HR. Approving submits them (the policy check runs).
+    # Only HR decides loans (the requester must not see an Approve button on their own request).
+    if hr and _exists("Employee Advance") and frappe.get_meta("Employee Advance").has_field("mm_is_loan"):
+        add("Employee Advance", {"mm_is_loan": 1, "docstatus": 0}, "owner", lambda d: "Loan request")
 
 
 @frappe.whitelist()
@@ -160,6 +167,14 @@ def act(doctype: str, name: str, action: str) -> dict:
         doc.approval_status = "Approved" if approve else "Rejected"
     elif doctype == "Shift Request":
         doc.status = "Approved" if approve else "Rejected"
+    elif doctype == "Employee Advance":
+        if not approve:
+            # A rejected loan request is closed without ever being submitted (no ledger impact), kept for history.
+            doc.check_permission("write")
+            frappe.db.set_value("Employee Advance", name, {"docstatus": 2, "status": "Cancelled"})
+            doc.add_comment("Workflow", "Rejected")
+            _close_assignments(doctype, name)
+            return {"name": name, "state": "Rejected", "docstatus": 2}
     else:
         frappe.throw(_("{0} can't be approved here").format(doctype))
     doc.submit()
