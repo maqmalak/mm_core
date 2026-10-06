@@ -294,6 +294,13 @@ doc_events = {
         "before_submit": "mm_core.loans.before_submit",
     },
     "Payment Entry": {
+        "before_insert": "mm_core.defaults.fill_cost_center",
+        "before_validate": "mm_core.defaults.fill_cost_center",
         "on_submit": "mm_core.loans.on_payment_submit",
+    },
+    # Header Cost Center is mandatory here; HRMS payroll journals only fill it on their lines.
+    "Journal Entry": {
+        "before_insert": "mm_core.defaults.fill_cost_center",
+        "before_validate": "mm_core.defaults.fill_cost_center",
     },
 }
