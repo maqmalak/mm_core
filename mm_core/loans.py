@@ -39,7 +39,7 @@ Changes are in loans.py (new ensure_policy_defaults) and hooks.py. Backend only,
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, add_months, cint, date_diff, flt, fmt_money, get_first_day, getdate, month_diff, nowdate
+from frappe.utils import add_days, add_months, cint, date_diff, flt, fmt_money, get_first_day, get_last_day, getdate, month_diff, nowdate
 
 DEFAULTS = {
     "employment_types": "Full-time", "min_service_months": 12, "salary_multiple": 3.0, "max_installment_pct": 30.0,
@@ -112,8 +112,8 @@ def _loans(employee, exclude=None):
     today = getdate(nowdate())
     for r in rows:
         r.outstanding = _outstanding(r)
-        r.scheduled = flt(frappe.db.get_value("Additional Salary", {"ref_doctype": "Employee Advance", "ref_docname": r.name,
-                                                                    "docstatus": 1}, "sum(amount)") or 0)
+        r.scheduled = flt(frappe.db.sql("""select sum(amount) from `tabAdditional Salary`
+            where ref_doctype = 'Employee Advance' and ref_docname = %s and docstatus = 1""", r.name)[0][0])
         months = cint(r.mm_installment_months) or 6
         # A default: still owed well past its term with nothing scheduled to recover it.
         r.defaulted = bool(r.outstanding > 0 and not r.scheduled and date_diff(today, r.posting_date) > (months + 3) * 30)
@@ -331,3 +331,117 @@ def fix_advance_account(company: str) -> str:
     frappe.db.set_value("Account", acc, "account_type", "Receivable")
     frappe.db.commit()
     return f"{acc}: set to Receivable"
+
+
+# ------------------------------------------------------------------ loan ledger + dashboard (React Salary Loans page)
+def _entry_type(voucher_type, debit, credit):
+    if flt(debit) > 0:
+        return "Disbursed"
+    return {"Journal Entry": "Salary deduction", "Payment Entry": "Repaid", "Expense Claim": "Adjusted (expense claim)"}.get(
+        voucher_type, "Recovered")
+
+
+@frappe.whitelist()
+def get_loan_ledger(company: str, scope: str = "loans", from_date: str | None = None, to_date: str | None = None,
+                    employee: str | None = None, loan: str | None = None) -> dict:
+    """Loan ledger from the general ledger (entries posted against each loan / advance): disbursements, salary deductions,
+    cash repayments, with opening and running balance — plus this month vs last month figures for the summary cards.
+
+    scope: "loans" = salary loans only (Salary loan ticked); "all" = every employee advance."""
+    if not frappe.has_permission("Employee Advance", "read"):
+        frappe.throw(_("Not permitted"), frappe.PermissionError)
+    today = getdate(nowdate())
+    this_start = get_first_day(today)
+    last_start = get_first_day(add_months(today, -1))
+    from_date = getdate(from_date or add_months(this_start, -5))
+    to_date = getdate(to_date or today)
+
+    f = {"company": company, "docstatus": 1}
+    if scope != "all" and frappe.get_meta("Employee Advance").has_field("mm_is_loan"):
+        f["mm_is_loan"] = 1
+    fields = ["name", "employee", "employee_name", "department", "posting_date", "advance_amount", "paid_amount", "claimed_amount",
+              "return_amount", "status", "purpose", "currency"]
+    if frappe.get_meta("Employee Advance").has_field("mm_is_loan"):
+        fields += ["mm_is_loan", "mm_installment_months", "mm_monthly_installment", "mm_guarantor_name", "mm_first_deduction"]
+    loans = frappe.get_all("Employee Advance", f, fields, order_by="posting_date desc", limit=5000)
+    for l in loans:
+        l.outstanding = _outstanding(l)
+    names = [l.name for l in loans]
+    by_name = {l.name: l for l in loans}
+    pending = frappe.db.count("Employee Advance", {"company": company, "docstatus": 0, **({"mm_is_loan": 1} if "mm_is_loan" in f else {})})
+
+    gl = frappe.db.sql("""select posting_date, voucher_type, voucher_no, against_voucher as loan, sum(debit) as debit,
+            sum(credit) as credit, max(remarks) as remarks
+        from `tabGL Entry`
+        where is_cancelled = 0 and company = %(company)s and against_voucher_type = 'Employee Advance'
+          and against_voucher in %(names)s and (debit > 0 or credit > 0)
+        group by posting_date, voucher_type, voucher_no, against_voucher
+        order by posting_date, voucher_no""", {"company": company, "names": names or [""]}, as_dict=True)
+    # Newer ERPNext links payments / payroll deductions to the advance in the Advance Payment Ledger instead of the
+    # GL entry's against_voucher (+ = paid out, − = recovered). Read both; a voucher already in the GL list wins.
+    if frappe.db.exists("DocType", "Advance Payment Ledger Entry"):
+        seen = {(g.voucher_no, g.loan) for g in gl}
+        dates = {}
+        for a in frappe.db.sql("""select voucher_type, voucher_no, against_voucher_no as loan, sum(amount) as amount
+                from `tabAdvance Payment Ledger Entry`
+                where company = %(company)s and against_voucher_type = 'Employee Advance' and against_voucher_no in %(names)s
+                  and delinked = 0
+                group by voucher_type, voucher_no, against_voucher_no having sum(amount) <> 0""",
+                               {"company": company, "names": names or [""]}, as_dict=True):
+            if (a.voucher_no, a.loan) in seen:
+                continue
+            key = (a.voucher_type, a.voucher_no)
+            if key not in dates:
+                dates[key] = frappe.db.get_value(a.voucher_type, a.voucher_no, "posting_date") if frappe.db.exists("DocType", a.voucher_type) else None
+            if not dates[key]:
+                continue
+            gl.append(frappe._dict(posting_date=dates[key], voucher_type=a.voucher_type, voucher_no=a.voucher_no, loan=a.loan,
+                                   debit=max(0.0, flt(a.amount)), credit=max(0.0, -flt(a.amount))))
+        gl.sort(key=lambda g: (getdate(g.posting_date), g.voucher_no))
+
+    def month_sum(start, kind):
+        end = get_last_day(start)
+        return flt(sum(g.debit if kind == "Disbursed" else g.credit for g in gl
+                       if start <= getdate(g.posting_date) <= end and _entry_type(g.voucher_type, g.debit, g.credit) == kind), 2)
+
+    def pct(a, b):
+        return None if not b else round((a - b) / b * 100, 1)
+
+    ded_this, ded_last = month_sum(this_start, "Salary deduction"), month_sum(last_start, "Salary deduction")
+    dis_this, dis_last = month_sum(this_start, "Disbursed"), month_sum(last_start, "Disbursed")
+    scheduled = flt(frappe.db.sql("""select sum(amount) from `tabAdditional Salary`
+        where docstatus = 1 and company = %(company)s and ref_doctype = 'Employee Advance' and ref_docname in %(names)s
+          and ((is_recurring = 1 and from_date <= %(end)s and to_date >= %(start)s) or (is_recurring = 0 and payroll_date between %(start)s and %(end)s))""",
+        {"company": company, "names": names or [""], "start": this_start, "end": get_last_day(this_start)})[0][0])
+    active = [l for l in loans if l.outstanding > 0]
+    # Before this month's payroll has run, the month's deduction is what's scheduled (shown as such, not as a 100% drop).
+    payroll_run = bool(frappe.db.exists("Payroll Entry", {"company": company, "docstatus": 1, "start_date": [">=", this_start],
+                                                          "end_date": ["<=", get_last_day(this_start)]}))
+    projected = not payroll_run and ded_this == 0
+    ded_shown = scheduled if projected else ded_this
+
+    # ledger rows for the selection
+    sel = [g for g in gl if (not loan or g.loan == loan) and (not employee or by_name[g.loan].employee == employee)]
+    opening = flt(sum(g.debit - g.credit for g in sel if getdate(g.posting_date) < from_date), 2)
+    rows, bal = [], opening
+    for g in sel:
+        if not (from_date <= getdate(g.posting_date) <= to_date):
+            continue
+        bal = flt(bal + g.debit - g.credit, 2)
+        l = by_name[g.loan]
+        rows.append({"date": str(g.posting_date), "employee": l.employee, "employee_name": l.employee_name, "loan": g.loan,
+                     "type": _entry_type(g.voucher_type, g.debit, g.credit), "voucher_type": g.voucher_type, "voucher_no": g.voucher_no,
+                     "debit": flt(g.debit, 2), "credit": flt(g.credit, 2), "balance": bal})
+    return {
+        "currency": frappe.get_cached_value("Company", company, "default_currency") or "PKR",
+        "summary": {
+            "outstanding": flt(sum(l.outstanding for l in active), 2), "active": len(active), "loans": len(loans), "pending": pending,
+            "deducted_this": ded_shown, "deducted_last": ded_last, "deducted_pct": pct(ded_shown, ded_last),
+            "deducted_projected": projected,
+            "disbursed_this": dis_this, "disbursed_last": dis_last, "disbursed_pct": pct(dis_this, dis_last),
+            "scheduled_this": scheduled, "this_month": str(this_start), "last_month": str(last_start),
+        },
+        "ledger": {"from_date": str(from_date), "to_date": str(to_date), "opening": opening, "closing": bal, "rows": rows[-2000:],
+                   "debit": flt(sum(r["debit"] for r in rows), 2), "credit": flt(sum(r["credit"] for r in rows), 2)},
+        "loans": loans,
+    }
