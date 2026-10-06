@@ -146,6 +146,8 @@ def act(doctype: str, name: str, action: str) -> dict:
         if action not in [t.action for t in get_transitions(doc)]:
             frappe.throw(_("Action {0} is not available to you for {1} {2}").format(action, doctype, name))
         doc = apply_workflow(doc, action)
+        if doc.docstatus == 1:
+            _close_assignments(doctype, name)
         return {"name": doc.name, "state": doc.get("workflow_state"), "docstatus": doc.docstatus}
 
     if action not in ("Approve", "Reject"):
@@ -162,4 +164,15 @@ def act(doctype: str, name: str, action: str) -> dict:
         frappe.throw(_("{0} can't be approved here").format(doctype))
     doc.submit()
     doc.add_comment("Workflow", "Approved" if approve else "Rejected")
+    _close_assignments(doctype, name)
     return {"name": doc.name, "state": "Approved" if approve else "Rejected", "docstatus": doc.docstatus}
+
+
+def _close_assignments(doctype, name):
+    """The decision is made: the approver's to-do for it is done."""
+    try:
+        from frappe.desk.form.assign_to import close_all_assignments
+
+        close_all_assignments(doctype, name)
+    except Exception:
+        frappe.db.set_value("ToDo", {"reference_type": doctype, "reference_name": name, "status": "Open"}, "status", "Closed")

@@ -134,6 +134,14 @@ def _approvals(limit=30, company=None):
     return items
 
 
+def _todos():
+    """The current user's open to-dos (and how many are past their date) — shown in the activity panel header."""
+    user, today = frappe.session.user, getdate(nowdate())
+    open_, overdue = frappe.db.sql("""select count(*), sum(date < %s) from `tabToDo`
+        where status = 'Open' and allocated_to = %s""", (today, user))[0]
+    return {"open": int(open_ or 0), "overdue": int(overdue or 0)}
+
+
 def _alerts(company, approvals_count):
     today, user, out = getdate(nowdate()), frappe.session.user, []
 
@@ -195,8 +203,6 @@ def _alerts(company, approvals_count):
         n = frappe.db.sql("""select count(*) from `tabCRM Task` where status in ('Backlog','Todo','In Progress')
             and assigned_to = %s and due_date < %s""", (user, now_datetime()))[0][0]
         add("followups", n, "Overdue follow-ups", "Assigned to you", "/crm/follow-ups?overdue=1", "rose")
-    n = frappe.db.sql("""select count(*) from `tabToDo` where status='Open' and allocated_to=%s and date < %s""", (user, today))[0][0]
-    add("todos", n, "Overdue to-dos", "Assigned to you", "/todos?overdue=1", "violet")
     return out
 
 
@@ -333,6 +339,7 @@ def _compute(company):
         "stats": {"entries_today": next((d["count"] for d in days if d["date"] == nowdate()), sum(hours)),
                   "pending": len(approvals), "posted_today": posted},
         "tiles": _block(_tiles, company) or {},
+        "todos": _block(_todos) or {"open": 0, "overdue": 0},
     }
 
 

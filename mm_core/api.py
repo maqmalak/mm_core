@@ -108,3 +108,33 @@ def get_print_options(doctype: str) -> dict:
         "letter_heads": [l.name for l in letter_heads],
         "default_letter_head": next((l.name for l in letter_heads if l.is_default), None),
     }
+
+
+@frappe.whitelist()
+def awesome_search(txt: str, limit: int = 8) -> dict:
+    """DocTypes and Reports matching `txt` that the current user may open — for the React search bar (Ctrl+K),
+    like the desk's awesome bar."""
+    txt = (txt or "").strip()
+    if len(txt) < 2:
+        return {"doctypes": [], "reports": []}
+    like, limit = f"%{txt}%", min(int(limit or 8), 25)
+    doctypes = []
+    for d in frappe.get_all("DocType", filters={"name": ["like", like], "istable": 0},
+                            fields=["name", "module", "issingle"], order_by="name asc", limit=60):
+        if frappe.has_permission(d.name, "read"):
+            doctypes.append({"name": d.name, "module": d.module, "single": d.issingle})
+        if len(doctypes) >= limit:
+            break
+    reports = []
+    for r in frappe.get_all("Report", filters={"name": ["like", like], "disabled": 0},
+                            fields=["name", "report_type", "ref_doctype", "module"], order_by="name asc", limit=60):
+        try:
+            if frappe.get_cached_doc("Report", r.name).is_permitted():
+                reports.append({"name": r.name, "type": r.report_type, "ref_doctype": r.ref_doctype, "module": r.module})
+        except Exception:
+            continue
+        if len(reports) >= limit:
+            break
+    # exact / prefix matches first
+    key = lambda x: (not x["name"].lower().startswith(txt.lower()), x["name"])  # noqa: E731
+    return {"doctypes": sorted(doctypes, key=key), "reports": sorted(reports, key=key)}
