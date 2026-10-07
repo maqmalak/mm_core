@@ -349,7 +349,6 @@ def _compute(company):
                   "pending": len(approvals), "posted_today": posted},
         "tiles": _block(_tiles, company) or {},
         "todos": _block(_todos) or {"open": 0, "overdue": 0},
-        "cheques": _block(_uncleared_cheques, company),
     }
 
 
