@@ -1,0 +1,126 @@
+{
+ "actions": [],
+ "creation": "2026-10-07 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sno",
+  "cheque_no",
+  "status",
+  "issue_date",
+  "party_type",
+  "party",
+  "party_name",
+  "amount",
+  "column_break_leaf",
+  "voucher_type",
+  "voucher_no",
+  "clearance_date",
+  "cancel_reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "sno",
+   "fieldtype": "Int",
+   "label": "S.No",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "cheque_no",
+   "fieldtype": "Data",
+   "label": "Cheque No",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Leaf Status",
+   "options": "Unused\nIssued\nCleared\nVoid\nStopped\nDishonoured",
+   "default": "Unused",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "issue_date",
+   "fieldtype": "Date",
+   "label": "Issue Date",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "party_type",
+   "fieldtype": "Select",
+   "label": "Party Type",
+   "options": "\nSupplier\nCustomer\nEmployee\nShareholder"
+  },
+  {
+   "fieldname": "party",
+   "fieldtype": "Dynamic Link",
+   "label": "Issued To (Party)",
+   "options": "party_type",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "party_name",
+   "fieldtype": "Data",
+   "label": "Party Name"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "column_break_leaf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "voucher_type",
+   "fieldtype": "Select",
+   "label": "Voucher Type",
+   "options": "\nPayment Entry\nJournal Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "voucher_no",
+   "fieldtype": "Dynamic Link",
+   "label": "Voucher No",
+   "options": "voucher_type",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "clearance_date",
+   "fieldtype": "Date",
+   "label": "Clearance Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cancel_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason (Void / Stopped / Dishonoured)",
+   "depends_on": "eval:in_list(['Void','Stopped','Dishonoured'], doc.status)",
+   "in_list_view": 1,
+   "columns": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-07 04:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "MM Core",
+ "name": "Cheque Book Leaf",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "idx",
+ "sort_order": "ASC",
+ "states": []
+}

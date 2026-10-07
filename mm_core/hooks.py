@@ -278,6 +278,8 @@ after_migrate = ["mm_core.desk_fixes.apply_all", "mm_core.loans.ensure_policy_de
 scheduler_events = {
     "cron": {
         "*/5 * * * *": ["mm_core.crm_reminders.send_due_reminders"],
+        # cheque leaves follow their voucher's clearance date (also when cleared from the desk / reconciliation tool)
+        "*/10 * * * *": ["mm_core.cheques.sync_cleared_status"],
     },
 }
 
@@ -295,12 +297,16 @@ doc_events = {
     },
     "Payment Entry": {
         "before_insert": "mm_core.defaults.fill_cost_center",
-        "before_validate": "mm_core.defaults.fill_cost_center",
-        "on_submit": "mm_core.loans.on_payment_submit",
+        "before_validate": ["mm_core.defaults.fill_cost_center", "mm_core.cheques.assign_cheque_no"],
+        "on_submit": ["mm_core.loans.on_payment_submit", "mm_core.cheques.on_voucher_submit"],
+        "on_cancel": "mm_core.cheques.on_voucher_cancel",
     },
     # Header Cost Center is mandatory here; HRMS payroll journals only fill it on their lines.
+    # Cheque mode: next cheque leaf filled in at submit, leaf issued with the journal (mm_core.cheques).
     "Journal Entry": {
         "before_insert": "mm_core.defaults.fill_cost_center",
-        "before_validate": "mm_core.defaults.fill_cost_center",
+        "before_validate": ["mm_core.defaults.fill_cost_center", "mm_core.cheques.assign_cheque_no"],
+        "on_submit": "mm_core.cheques.on_voucher_submit",
+        "on_cancel": "mm_core.cheques.on_voucher_cancel",
     },
 }

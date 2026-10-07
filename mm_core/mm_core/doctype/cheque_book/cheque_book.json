@@ -1,0 +1,222 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "CHQB-.#####",
+ "creation": "2026-10-07 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_book",
+  "company",
+  "bank_account",
+  "bank",
+  "account",
+  "column_break_book",
+  "posting_date",
+  "issue_date",
+  "no_of_leaves",
+  "from_serial",
+  "to_serial",
+  "status",
+  "section_counts",
+  "leaves_in_hand",
+  "leaves_issued",
+  "column_break_counts",
+  "leaves_cancelled",
+  "issued_amount",
+  "section_leaves",
+  "leaves",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_book",
+   "fieldtype": "Section Break",
+   "label": "Cheque Book"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "bank_account",
+   "fieldtype": "Link",
+   "label": "Bank Account",
+   "options": "Bank Account",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "bank",
+   "fieldtype": "Link",
+   "label": "Bank",
+   "options": "Bank",
+   "fetch_from": "bank_account.bank",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "label": "Bank GL Account",
+   "options": "Account",
+   "fetch_from": "bank_account.account",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_book",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Posting Date",
+   "reqd": 1,
+   "default": "Today",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "issue_date",
+   "fieldtype": "Date",
+   "label": "Issue Date",
+   "description": "Date the bank issued the cheque book."
+  },
+  {
+   "fieldname": "no_of_leaves",
+   "fieldtype": "Int",
+   "label": "No of Leaves",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "from_serial",
+   "fieldtype": "Data",
+   "label": "From Serial",
+   "reqd": 1,
+   "description": "First cheque number (leading zeros are kept)."
+  },
+  {
+   "fieldname": "to_serial",
+   "fieldtype": "Data",
+   "label": "To Serial",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Cheque Book Status",
+   "options": "Unused\nIn Use\nExhausted\nCancelled",
+   "default": "Unused",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "section_counts",
+   "fieldtype": "Section Break",
+   "label": "Summary",
+   "collapsible": 0
+  },
+  {
+   "fieldname": "leaves_in_hand",
+   "fieldtype": "Int",
+   "label": "Unused Leaves",
+   "read_only": 1
+  },
+  {
+   "fieldname": "leaves_issued",
+   "fieldtype": "Int",
+   "label": "Issued / Cleared",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_counts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "leaves_cancelled",
+   "fieldtype": "Int",
+   "label": "Void / Stopped / Dishonoured",
+   "read_only": 1
+  },
+  {
+   "fieldname": "issued_amount",
+   "fieldtype": "Currency",
+   "label": "Issued Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_leaves",
+   "fieldtype": "Section Break",
+   "label": "Cheque Leaves"
+  },
+  {
+   "fieldname": "leaves",
+   "fieldtype": "Table",
+   "label": "Leaves",
+   "options": "Cheque Book Leaf"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-07 04:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "MM Core",
+ "name": "Cheque Book",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  },
+  {
+   "role": "Accounts Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  },
+  {
+   "role": "Accounts User",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "posting_date",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "bank_account",
+ "track_changes": 1,
+ "description": "Cheque book received from the bank, with every leaf tracked: unused, issued, cleared, void, stopped or dishonoured."
+}

@@ -142,6 +142,15 @@ def _todos():
     return {"open": int(open_ or 0), "overdue": int(overdue or 0)}
 
 
+def _uncleared_cheques(company):
+    """Cheques issued but not yet paid by the bank (leaf status Issued) — the activity panel's cheque tile."""
+    if not frappe.db.exists("DocType", "Cheque Book") or not frappe.has_permission("Cheque Book", "read"):
+        return None
+    n, amount, oldest = frappe.db.sql("""select count(*), sum(l.amount), min(l.issue_date) from `tabCheque Book Leaf` l
+        join `tabCheque Book` b on b.name = l.parent where b.company = %s and l.status = 'Issued'""", company)[0]
+    return {"count": int(n or 0), "amount": flt(amount), "oldest": str(oldest) if oldest else None}
+
+
 def _alerts(company, approvals_count):
     today, user, out = getdate(nowdate()), frappe.session.user, []
 
@@ -340,6 +349,7 @@ def _compute(company):
                   "pending": len(approvals), "posted_today": posted},
         "tiles": _block(_tiles, company) or {},
         "todos": _block(_todos) or {"open": 0, "overdue": 0},
+        "cheques": _block(_uncleared_cheques, company),
     }
 
 
