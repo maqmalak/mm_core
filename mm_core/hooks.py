@@ -303,6 +303,9 @@ doc_events = {
     },
     # Header Cost Center is mandatory here; HRMS payroll journals only fill it on their lines.
     # Cheque mode: next cheque leaf filled in at submit, leaf issued with the journal (mm_core.cheques).
+    "Work Order": {
+        "before_validate": "mm_core.defaults.fix_planned_end",
+    },
     "Journal Entry": {
         "before_insert": "mm_core.defaults.fill_cost_center",
         "before_validate": ["mm_core.defaults.fill_cost_center", "mm_core.cheques.assign_cheque_no"],
