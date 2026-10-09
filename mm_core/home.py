@@ -123,15 +123,17 @@ def _kpis(company):
 
 
 def _approvals(limit=30, company=None):
-    """What waits for the current user (workflow documents + HR requests), from the approvals inbox."""
+    """What waits for the current user (workflow documents + HR requests), from the approvals inbox:
+    the first `limit` to show, and how many there are in all."""
     from mm_core.approvals import get_inbox
 
     items = []
-    for p in get_inbox(company, days=1)["pending"][:limit]:
+    pending = get_inbox(company, days=1)["pending"]
+    for p in pending[:limit]:
         items.append({"doctype": p["doctype"], "name": p["name"], "state": p["state"], "title": p.get("title") or "",
                       "amount": p.get("amount"), "since": p["since"], "category": p["category"],
                       "can_approve": "Approve" in (p.get("actions") or [])})
-    return items
+    return items, len(pending)
 
 
 def _todos():
@@ -215,54 +217,116 @@ def _alerts(company, approvals_count):
     return out
 
 
-def _activity(company, days=7, per_doctype=12):
-    since = add_days(nowdate(), -(days - 1))
+# Share by module: which transactions belong to which module (counted by creation, per company)
+MODULE_MIX = {
+    "Selling": ["Quotation", "Sales Order", "Delivery Note", "Sales Invoice"],
+    "Buying": ["Material Request", "Request for Quotation", "Purchase Order", "Purchase Receipt", "Purchase Invoice"],
+    "Accounts": ["Payment Entry", "Journal Entry"],
+    "Stock": ["Stock Entry", "Stock Reconciliation"],
+    "Production": ["Work Order", "Job Card", "Production Plan"],
+    "HR": ["Leave Application", "Expense Claim", "Employee Advance", "Shift Request", "Salary Slip"],
+    "CRM": ["CRM Lead", "CRM Deal", "Lead", "Opportunity"],
+    "POS": ["POS Invoice"],
+}
+
+
+def _module_mix(company):
+    """Documents per module dated today, in the last 7 days and the last 30 days (cancelled excluded), with the top types."""
+    today = getdate(nowdate())
+    week, month = add_days(today, -6), add_days(today, -29)
+    out = {p: {} for p in ("today", "week", "month")}
+    top = {p: {} for p in ("today", "week", "month")}
+    for module, doctypes in MODULE_MIX.items():
+        for dt in doctypes:
+            if not _can(dt):
+                continue
+            # the document's own business date (posting / transaction date), else when it was created
+            field = next((f for f in ("posting_date", "transaction_date", "from_date") if _has(dt, f)), "creation")
+            d = f"date(`{field}`)"
+            cond = f"{d} between %(m)s and %(t)s and docstatus < 2" + (" and company = %(c)s" if _has(dt, "company") else "")
+            t, w, m = frappe.db.sql(f"""select sum({d} = %(t)s), sum({d} >= %(w)s), count(*) from `tab{dt}`
+                where {cond}""", {"t": today, "w": week, "m": month, "c": company})[0]
+            for period, n in (("today", t), ("week", w), ("month", m)):
+                n = int(n or 0)
+                if n:
+                    out[period][module] = out[period].get(module, 0) + n
+                    top[period].setdefault(module, []).append([dt, n])
+    for period in top:
+        for module in top[period]:
+            top[period][module] = sorted(top[period][module], key=lambda x: -x[1])[:3]
+    return {"counts": out, "top": top}
+
+
+def _date_field(dt):
+    """A transaction's own business date field (posting / transaction date), if it has one."""
+    return next((f for f in ("posting_date", "transaction_date", "from_date") if _has(dt, f)), None)
+
+
+def _activity(company, days=7, per_doctype=12, per_category=12):
+    """Recent transactions: dated in the last `days` days (business date) or touched in that time — newest first,
+    at most `per_category` from each module so one busy module (journal entries…) can't crowd out the rest."""
+    today = nowdate()
+    since = add_days(today, -(days - 1))
     feed = []
     for dt, (cat, amt, title) in ACTIVITY.items():
         if not _can(dt):
             continue
+        dfield = _date_field(dt)
         fields = ["name", "docstatus", "owner", "modified", "creation"]
+        if dfield:
+            fields.append(f"{dfield} as doc_date")
+        if _has(dt, "posting_time"):
+            fields.append("posting_time")
         if amt and _has(dt, amt):
             fields.append(f"`{amt}` as amount")
         if title and _has(dt, title):
             fields.append(f"`{title}` as title")
         if _has(dt, "status"):
             fields.append("status")
-        filters = {"modified": [">=", since]}
-        if _has(dt, "company"):
-            filters["company"] = company
-        for r in frappe.get_all(dt, filters=filters, fields=fields, order_by="modified desc", limit=per_doctype):
+        filters = {"company": company} if _has(dt, "company") else {}
+        or_filters = [["modified", ">=", since]] + ([[dfield, "between", [since, today]]] if dfield else [])
+        order = f"{dfield} desc, modified desc" if dfield else "modified desc"
+        for r in frappe.get_all(dt, filters=filters, or_filters=or_filters, fields=fields, order_by=order, limit=per_doctype):
             status = r.get("status") or {0: "Draft", 1: "Submitted", 2: "Cancelled"}.get(r.docstatus, "")
+            when = str(r.modified)
+            if r.get("doc_date") and str(r.doc_date) <= today and str(r.doc_date) != when[:10]:
+                tm = str(r.get("posting_time") or "") or when[11:19]
+                when = f"{r.doc_date} {tm[:8] if len(tm) >= 8 else tm.zfill(8)}"
             feed.append({"doctype": dt, "name": r.name, "category": cat, "title": r.get("title") or "",
                          "amount": flt(r.get("amount")) or None, "status": status, "owner": r.owner,
-                         "owner_name": frappe.utils.get_fullname(r.owner), "at": str(r.modified), "created": str(r.creation)})
+                         "owner_name": frappe.utils.get_fullname(r.owner), "at": when, "day": when[:10]})
     feed.sort(key=lambda x: x["at"], reverse=True)
-    today = nowdate()
+    taken, balanced = {}, []
+    for f in feed:
+        if taken.get(f["category"], 0) < per_category:
+            taken[f["category"]] = taken.get(f["category"], 0) + 1
+            balanced.append(f)
     hours = [0] * 24
     mix = {}
     posted = 0.0
-    for f in feed:
-        if f["created"][:10] == today:
-            hours[int(f["created"][11:13])] += 1
+    for f in balanced:
+        if f["day"] == today:
+            hours[int(f["at"][11:13] or 0)] += 1
             mix[f["category"]] = mix.get(f["category"], 0) + 1
             if f["status"] not in ("Draft", "Cancelled") and f["category"] == "finance":
                 posted += f["amount"] or 0
-    return feed[:40], hours, mix, posted
+    return balanced[:60], hours, mix, posted
 
 
 def _week_days(company):
-    """Documents created per day over the last 7 days, today included (same doctypes as the activity feed)."""
+    """Documents per day (business date) over the last 7 days, today included (same doctypes as the activity feed)."""
     today = getdate(nowdate())
     start = add_days(today, -6)
     counts = {}
     for dt in ACTIVITY:
         if not _can(dt):
             continue
-        cond, args = "creation >= %s", [start]
+        d_expr = f"date(`{_date_field(dt) or 'creation'}`)"
+        cond, args = f"{d_expr} between %s and %s and docstatus < 2", [start, today]
         if _has(dt, "company"):
             cond += " and company = %s"
             args.append(company)
-        for d, n in frappe.db.sql(f"select date(creation), count(*) from `tab{dt}` where {cond} group by date(creation)", args):
+        for d, n in frappe.db.sql(f"select {d_expr}, count(*) from `tab{dt}` where {cond} group by {d_expr}", args):
             counts[str(d)] = counts.get(str(d), 0) + n
     days = []
     for i in range(7):
@@ -332,7 +396,7 @@ def get_home(company: str | None = None, refresh: int = 0) -> dict:
 
 
 def _compute(company):
-    approvals = _block(_approvals, 30, company) or []
+    approvals, approvals_total = _block(_approvals, 30, company) or ([], 0)
     activity = _block(_activity, company) or ([], [0] * 24, {}, 0.0)
     feed, hours, mix, posted = activity
     days = _block(_week_days, company) or []
@@ -340,13 +404,15 @@ def _compute(company):
         "company": company,
         "kpis": [],  # the home page no longer shows KPI tiles (_kpis kept for reuse)
         "approvals": approvals,
-        "alerts": _block(_alerts, company, len(approvals)) or [],
+        "approvals_total": approvals_total,
+        "alerts": _block(_alerts, company, approvals_total) or [],
         "activity": feed,
         "hours": hours,
         "days": days,
         "mix": mix,
+        "module_mix": _block(_module_mix, company) or {"counts": {}, "top": {}},
         "stats": {"entries_today": next((d["count"] for d in days if d["date"] == nowdate()), sum(hours)),
-                  "pending": len(approvals), "posted_today": posted},
+                  "pending": approvals_total, "posted_today": posted},
         "tiles": _block(_tiles, company) or {},
         "todos": _block(_todos) or {"open": 0, "overdue": 0},
     }

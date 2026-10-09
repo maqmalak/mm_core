@@ -201,6 +201,12 @@ def _build_custom_fields():
     add("HR Settings", "mm_loan_component", "Recovery Salary Component", "Link", "Salary Component", "mm_loan_guarantor_max_guarantees",
         description="Deduction used for instalments (default: Loan Recovery, created automatically).")
 
+    # ---------------------------------------------------------- POS Invoice: offline sales synced from the React terminal
+    add("POS Invoice", "mm_offline_id", "Offline ID", "Data", None, "pos_profile", read_only=1, no_copy=1, search_index=1,
+        description="Set when the sale was rung up offline in the React POS and synced later (prevents double posting).")
+    add("POS Invoice", "mm_offline_at", "Rung Up Offline At", "Datetime", None, "mm_offline_id", read_only=1, no_copy=1,
+        depends_on="mm_offline_id")
+
     return data
 
 
