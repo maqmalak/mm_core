@@ -201,6 +201,10 @@ def _build_custom_fields():
     add("HR Settings", "mm_loan_component", "Recovery Salary Component", "Link", "Salary Component", "mm_loan_guarantor_max_guarantees",
         description="Deduction used for instalments (default: Loan Recovery, created automatically).")
 
+    # ---------------------------------------------------------- Branch: what kind of site it is (icon on the Branches page / map)
+    add("Branch", "mm_branch_type", "Branch Type", "Select", "\nHead Office\nFactory\nWarehouse\nRestaurant\nShop / Outlet\nOffice",
+        "branch", description="Shown as the branch's icon in the list and on the map.")
+
     # ---------------------------------------------------------- Item: POS quantity presets (e.g. Roti starts at 2)
     add("Item", "mm_pos_section", "POS", "Section Break", None, "description", collapsible=1)
     add("Item", "mm_pos_default_qty", "POS Default Qty", "Float", None, "mm_pos_section",
