@@ -201,6 +201,13 @@ def _build_custom_fields():
     add("HR Settings", "mm_loan_component", "Recovery Salary Component", "Link", "Salary Component", "mm_loan_guarantor_max_guarantees",
         description="Deduction used for instalments (default: Loan Recovery, created automatically).")
 
+    # ---------------------------------------------------------- Item: POS quantity presets (e.g. Roti starts at 2)
+    add("Item", "mm_pos_section", "POS", "Section Break", None, "description", collapsible=1)
+    add("Item", "mm_pos_default_qty", "POS Default Qty", "Float", None, "mm_pos_section",
+        description="Quantity a sale starts at when this item is added at the counter (blank = 1).")
+    add("Item", "mm_pos_qty_options", "POS Quick Quantities", "Data", None, "mm_pos_default_qty",
+        description="Comma-separated quantities shown as one-tap buttons on the cart line, e.g. 4,5,6,8,10,15,20.")
+
     # ---------------------------------------------------------- POS Invoice: offline sales synced from the React terminal
     add("POS Invoice", "mm_offline_id", "Offline ID", "Data", None, "pos_profile", read_only=1, no_copy=1, search_index=1,
         description="Set when the sale was rung up offline in the React POS and synced later (prevents double posting).")

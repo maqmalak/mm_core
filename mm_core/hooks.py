@@ -284,6 +284,9 @@ scheduler_events = {
 }
 
 doc_events = {
+    "POS Invoice": {
+        "on_submit": "mm_core.pos.notify_invoice",
+    },
     "Communication": {
         "after_insert": "mm_core.crm_mail_notifications.on_communication_after_insert",
     },
