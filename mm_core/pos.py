@@ -503,9 +503,73 @@ def close_shift(counted: str) -> dict:
         if row.mode_of_payment in counted:
             row.closing_amount = flt(counted[row.mode_of_payment])
             row.difference = flt(row.closing_amount - row.expected_amount, 2)
-    closing.insert()
-    closing.submit()
+    rows = [r.as_dict() for r in closing.pos_invoices]
+    try:
+        closing.insert()
+        closing.submit()
+    except Exception as e:
+        # ERPNext consolidates the shift's POS Invoices into Sales Invoices on submit; when that fails it rolls the whole
+        # closing back and then trips over its own record ("Could not find Reference Name: POS-CLO-…"), hiding the cause.
+        frappe.db.rollback()
+        reason = _consolidation_error(rows) or frappe.utils.strip_html(str(e))
+        frappe.log_error(title=f"POS shift close failed: {shift.name}", message=reason)
+        frappe.throw(_("The shift could not be closed — merging its sales into invoices failed: {0}").format(reason),
+                     title=_("Shift not closed"))
     return {"name": closing.name, "status": frappe.db.get_value("POS Closing Entry", closing.name, "status")}
+
+
+def diagnose_close(opening: str | None = None) -> str:
+    """Why can't this shift close? Dry-runs the consolidation for an open POS Opening Entry (latest open one if not given)
+    and returns ERPNext's real error — nothing is saved.
+        bench --site <site> execute mm_core.pos.diagnose_close --kwargs "{'opening': 'POS-OPE-2026-00001'}" """
+    from erpnext.accounts.doctype.pos_closing_entry.pos_closing_entry import make_closing_entry_from_opening
+
+    frappe.set_user("Administrator")
+    opening = opening or frappe.db.get_value("POS Opening Entry", {"docstatus": 1, "pos_closing_entry": ["in", ["", None]]}, "name",
+                                            order_by="period_start_date desc")
+    if not opening:
+        return "No open shift."
+    closing = make_closing_entry_from_opening(frappe.get_doc("POS Opening Entry", opening))
+    rows = [r.as_dict() for r in closing.pos_invoices]
+    reason = _consolidation_error(rows)
+    out = f"{opening}: {len(rows)} invoice(s) — " + (f"consolidation FAILS: {reason}" if reason else "consolidation OK, the shift can close")
+    print(out)
+    return out
+
+
+def _consolidation_error(rows):
+    """Dry-run the consolidation (inside a savepoint, rolled back) to surface ERPNext's real error message."""
+    from erpnext.accounts.doctype.pos_invoice_merge_log.pos_invoice_merge_log import get_invoice_customer_map, split_invoices
+
+    if not rows:
+        return None
+    rows = [frappe._dict(r) for r in rows]
+    frappe.clear_messages()
+    frappe.db.savepoint("pos_close_diag")
+    try:
+        for customer, by_dim in get_invoice_customer_map(rows).items():
+            for invoices in by_dim.values():
+                for chunk in split_invoices(invoices):
+                    log = frappe.new_doc("POS Invoice Merge Log")
+                    log.update({"posting_date": nowdate(), "posting_time": frappe.utils.nowtime(), "customer": customer,
+                                "company": frappe.db.get_value("POS Invoice", chunk[0].get("pos_invoice"), "company")})
+                    log.set("pos_invoices", chunk)
+                    log.save(ignore_permissions=True)
+                    log.submit()
+        return None
+    except Exception as e:
+        def text(m):
+            if isinstance(m, str) and m.startswith("{"):
+                try:
+                    m = json.loads(m)
+                except ValueError:
+                    pass
+            return frappe.utils.strip_html(str(m.get("message", "") if isinstance(m, dict) else m))
+        msgs = [text(m) for m in (frappe.message_log or [])]
+        return "; ".join(x for x in msgs if x) or frappe.utils.strip_html(str(e))
+    finally:
+        frappe.db.rollback(save_point="pos_close_diag")
+        frappe.clear_messages()
 
 
 def _dues_collected(shift):
